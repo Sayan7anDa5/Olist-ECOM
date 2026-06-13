@@ -56,16 +56,18 @@ customer-value-analysis/
 
 ## Key Findings
 
-> Replace the placeholders below with real numbers after running the pipeline.
-
 | Metric | Value |
 |---|---|
-| Total delivered orders | _TBD_ |
+| Total delivered orders | 96,478 |
 | Repeat purchase rate | ~3% |
-| Champions segment — share of revenue | _TBD_ % |
-| At-Risk + Lost — revenue at risk | _TBD_ % |
-| Avg. delivery delay (days) for 1-star reviews | _TBD_ days |
-| Avg. delivery delay (days) for 5-star reviews | _TBD_ days |
+| Champions segment — share of total revenue | 17.2% (R$2.65M) |
+| At-Risk + Lost + About to Sleep — revenue at risk | **40.1%** (R$6.18M) |
+| Late delivery rate for 1-star reviews | 36.8% of orders |
+| Late delivery rate for 5-star reviews | 1.85% of orders |
+| Avg. delivery delay for 1-star reviews | −4 days (early, but late when it is late) |
+| Avg. delivery delay for 5-star reviews | −13 days (arrives well ahead of estimate) |
+
+The clearest operational signal: orders that arrive late are **20× more likely** to receive a 1-star review than those arriving early.
 
 ---
 

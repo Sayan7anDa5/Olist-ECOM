@@ -1,9 +1,9 @@
 -- =============================================================================
--- Layer 3: Cleaned / Conformed Views
+-- Layer 3: Cleaned / Conformed Views  (PostgreSQL)
 -- - Collapses customer_id → customer_unique_id
--- - Casts timestamps (already handled in load_data.py, but coalesced here)
 -- - Translates product category names PT → EN
--- - Filters to delivered orders only for revenue-bearing views
+-- - Computes delivery delay with date subtraction (PostgreSQL returns integer days)
+-- - Filters to delivered orders only for revenue-bearing columns
 -- - Produces fact_orders as the single source of truth for Layer 4
 -- =============================================================================
 
@@ -13,7 +13,6 @@
 CREATE OR REPLACE VIEW dim_customers AS
 SELECT
     customer_unique_id,
-    -- When a customer has multiple customer_ids, pick the most recent city/state
     MAX(customer_city)  AS customer_city,
     MAX(customer_state) AS customer_state
 FROM stg_customers
@@ -33,9 +32,9 @@ LEFT JOIN stg_product_category_translation t
     ON p.product_category_name = t.product_category_name;
 
 -- -----------------------------------------------------------------------------
--- fact_orders: one row per order, joined to customer_unique_id and payments.
--- SCOPE: all orders (all statuses) — status filtering happens in the marts.
--- Revenue columns are NULL for non-delivered orders.
+-- fact_orders: one row per order joined to customer_unique_id and payments.
+-- SCOPE: all statuses — filtering to 'delivered' happens in the marts.
+-- Revenue is NULL for non-delivered orders.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW fact_orders AS
 SELECT
@@ -47,16 +46,12 @@ SELECT
     o.order_delivered_customer_date,
     o.order_estimated_delivery_date,
 
-    -- Delivery delay in days (positive = late, negative = early)
-    DATEDIFF(
-        o.order_delivered_customer_date,
-        o.order_estimated_delivery_date
-    ) AS delivery_delay_days,
+    -- PostgreSQL date subtraction returns integer days directly
+    (o.order_delivered_customer_date::date - o.order_estimated_delivery_date::date)
+        AS delivery_delay_days,
 
-    -- Total payment value for this order (sum across payment_sequential rows)
     pay.total_payment_value,
 
-    -- Revenue only for delivered orders
     CASE
         WHEN o.order_status = 'delivered' THEN pay.total_payment_value
         ELSE NULL

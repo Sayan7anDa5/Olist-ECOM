@@ -20,6 +20,19 @@ from tqdm import tqdm
 
 DATA_DIR = Path(__file__).parent / "data"
 
+# Primary key columns per table — used to deduplicate before insert
+TABLE_PKS = {
+    "stg_customers":                    ["customer_id"],
+    "stg_orders":                       ["order_id"],
+    "stg_order_items":                  ["order_id", "order_item_id"],
+    "stg_order_payments":               ["order_id", "payment_sequential"],
+    "stg_order_reviews":                ["review_id"],
+    "stg_products":                     ["product_id"],
+    "stg_sellers":                      ["seller_id"],
+    "stg_product_category_translation": ["product_category_name"],
+    # stg_geolocation has no PK — no dedup needed
+}
+
 # Map CSV filename stem → staging table name
 CSV_TABLE_MAP = {
     "olist_customers_dataset":                  "stg_customers",
@@ -50,7 +63,11 @@ def build_engine(dialect: str, host: str, port: int, db: str, user: str, passwor
     if dialect == "mysql":
         url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{db}?charset=utf8mb4"
     elif dialect == "postgresql":
-        url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+        if password:
+            url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+        else:
+            # No password: use Unix domain socket (peer auth)
+            url = f"postgresql+psycopg2://{user}@/{db}?host=/var/run/postgresql"
     else:
         sys.exit(f"Unsupported dialect: {dialect}")
     return create_engine(url, echo=False)
@@ -74,6 +91,15 @@ def load_table(engine, stem: str, table: str, chunksize: int = 50_000):
     for col in TIMESTAMP_COLUMNS.get(table, []):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
+
+    # Deduplicate on PK columns — some CSVs (e.g. reviews) have duplicate rows
+    pk_cols = TABLE_PKS.get(table)
+    if pk_cols:
+        before = len(df)
+        df = df.drop_duplicates(subset=pk_cols, keep="first")
+        dropped = before - len(df)
+        if dropped:
+            print(f"  [DEDUP] {table}: dropped {dropped:,} duplicate rows")
 
     with engine.begin() as conn:
         conn.execute(text(f"DELETE FROM {table}"))
