@@ -1,14 +1,15 @@
 """
 Olist Customer Value Segmentation Dashboard
-Connects to the local PostgreSQL olist database (Unix socket, no password).
+Loads pre-exported parquet files from dashboard/data/ — no database required.
 Run with:  streamlit run dashboard/app.py
 """
+
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from sqlalchemy import create_engine, text
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -18,40 +19,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── DB connection (cached) ────────────────────────────────────────────────────
-@st.cache_resource
-def get_engine():
-    return create_engine(
-        "postgresql+psycopg2://sayantan@/olist?host=/var/run/postgresql",
-        pool_pre_ping=True,
-    )
+# ── Data loading (cached) ─────────────────────────────────────────────────────
+DATA_DIR = Path(__file__).parent / "data"
 
-@st.cache_data(ttl=300)
-def query(sql: str) -> pd.DataFrame:
-    with get_engine().connect() as conn:
-        return pd.read_sql(text(sql), conn)
+@st.cache_data
+def load(name: str) -> pd.DataFrame:
+    return pd.read_parquet(DATA_DIR / f"{name}.parquet")
 
-# ── Load all data ─────────────────────────────────────────────────────────────
-rfm       = query("SELECT * FROM rfm_segment_summary ORDER BY total_revenue DESC")
-kpi_risk  = query("SELECT * FROM kpi_revenue_at_risk")
-dlv_rev   = query("SELECT * FROM delivery_vs_review ORDER BY review_score")
-seg_dlv   = query("SELECT * FROM segment_delivery_experience ORDER BY segment_revenue DESC")
-cat_rev   = query("SELECT * FROM category_revenue_delivery ORDER BY total_revenue DESC LIMIT 15")
-state_dlv = query("SELECT * FROM delivery_delay_by_seller_state ORDER BY avg_delay_days DESC LIMIT 20")
-cohort    = query("SELECT * FROM cohort_retention_rates WHERE period_number <= 6")
-cohort_avg= query("SELECT * FROM cohort_avg_retention WHERE period_number <= 6")
-totals    = query("""
-    SELECT
-        COUNT(*)                          AS total_orders,
-        ROUND(SUM(revenue)::numeric, 0)   AS total_revenue,
-        COUNT(DISTINCT customer_unique_id) AS total_customers
-    FROM fact_orders WHERE order_status = 'delivered'
-""")
-repeat    = query("""
-    SELECT ROUND(100.0 * SUM(CASE WHEN frequency > 1 THEN 1 ELSE 0 END) / COUNT(*)::numeric, 1)
-           AS repeat_pct
-    FROM rfm_raw
-""")
+rfm        = load("rfm_segment_summary")
+kpi_risk   = load("kpi_revenue_at_risk")
+dlv_rev    = load("delivery_vs_review")
+seg_dlv    = load("segment_delivery_experience")
+cat_rev    = load("category_revenue_delivery")
+state_dlv  = load("delivery_delay_by_seller_state")
+cohort     = load("cohort_retention_rates")
+cohort_avg = load("cohort_avg_retention")
+totals     = load("totals")
+repeat     = load("repeat_rate")
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 SEGMENT_COLORS = {
@@ -72,10 +56,10 @@ st.divider()
 
 # ── KPI row ───────────────────────────────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Delivered Orders",   f"{int(totals['total_orders'][0]):,}")
-c2.metric("Total Revenue",      f"R$ {int(totals['total_revenue'][0]):,}")
-c3.metric("Unique Customers",   f"{int(totals['total_customers'][0]):,}")
-c4.metric("Revenue at Risk",    f"{float(kpi_risk['revenue_at_risk_pct'][0]):.1f}%",
+c1.metric("Delivered Orders",     f"{int(totals['total_orders'][0]):,}")
+c2.metric("Total Revenue",        f"R$ {int(totals['total_revenue'][0]):,}")
+c3.metric("Unique Customers",     f"{int(totals['total_customers'][0]):,}")
+c4.metric("Revenue at Risk",      f"{float(kpi_risk['revenue_at_risk_pct'][0]):.1f}%",
           delta=f"R$ {float(kpi_risk['revenue_at_risk'][0]):,.0f}",
           delta_color="inverse")
 c5.metric("Repeat Purchase Rate", f"{float(repeat['repeat_pct'][0]):.1f}%")
@@ -96,11 +80,7 @@ with col_left:
         marker_color=colors,
         text=rfm["customer_count"].apply(lambda n: f"{n:,} customers"),
         textposition="outside",
-        hovertemplate=(
-            "<b>%{x}</b><br>"
-            "Revenue: R$ %{y:,.0f}<br>"
-            "%{text}<extra></extra>"
-        ),
+        hovertemplate="<b>%{x}</b><br>Revenue: R$ %{y:,.0f}<br>%{text}<extra></extra>",
     ))
     fig.update_layout(
         title="Revenue by RFM Segment",
@@ -134,7 +114,6 @@ with col_right:
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-# RFM detail table
 with st.expander("RFM segment detail"):
     display = rfm.copy()
     display.columns = ["Segment", "Customers", "Revenue (R$)", "Avg Revenue", "Avg Recency (days)", "Avg Frequency"]
@@ -149,8 +128,7 @@ st.subheader("Delivery Experience & Review Scores")
 col_a, col_b = st.columns(2)
 
 with col_a:
-    fig3 = go.Figure()
-    fig3.add_trace(go.Bar(
+    fig3 = go.Figure(go.Bar(
         x=dlv_rev["review_score"],
         y=dlv_rev["avg_delivery_delay_days"],
         name="Avg delay (days)",
@@ -184,7 +162,6 @@ with col_b:
     )
     st.plotly_chart(fig4, use_container_width=True)
 
-# Segment delivery experience
 st.markdown("**Delivery performance by RFM segment** — do at-risk customers experience worse delivery?")
 colors_seg = [SEGMENT_COLORS.get(s, "#95a5a6") for s in seg_dlv["rfm_segment"]]
 fig5 = go.Figure()
@@ -227,7 +204,6 @@ col_coh1, col_coh2 = st.columns([3, 2])
 with col_coh1:
     pivot = cohort.pivot(index="cohort_month", columns="period_number", values="retention_pct").fillna(0)
     pivot = pivot.sort_index()
-
     fig6 = go.Figure(go.Heatmap(
         z=pivot.values,
         x=[f"Month +{c}" for c in pivot.columns],
@@ -257,11 +233,9 @@ with col_coh2:
     ))
     fig7.update_layout(
         title="Avg Retention by Months Since Acquisition",
-        xaxis_title="Months Since First Purchase",
-        yaxis_title="Avg Retention %",
+        xaxis_title="Months Since First Purchase", yaxis_title="Avg Retention %",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        height=420,
-        xaxis=dict(tickmode="linear"),
+        height=420, xaxis=dict(tickmode="linear"),
     )
     st.plotly_chart(fig7, use_container_width=True)
 
@@ -307,11 +281,7 @@ with col_geo:
         ],
         text=state_dlv["avg_review_score"].apply(lambda v: f"★ {v:.2f}"),
         textposition="outside",
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Avg delay: %{x:.1f} days<br>"
-            "Review: %{text}<extra></extra>"
-        ),
+        hovertemplate="<b>%{y}</b><br>Avg delay: %{x:.1f} days<br>Review: %{text}<extra></extra>",
     ))
     fig9.add_vline(x=0, line_dash="dash", line_color="grey", line_width=1)
     fig9.update_layout(
