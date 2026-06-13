@@ -19,6 +19,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+with st.sidebar:
+    st.markdown("### 📦 Olist Dashboard")
+    st.markdown("[🌐 Live App](https://olist-ecom-re.streamlit.app/)")
+    st.markdown("[📂 GitHub Repo](https://github.com/Sayan7anDa5/Olist-ECOM)")
+
 # ── Data loading (cached) ─────────────────────────────────────────────────────
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -292,3 +297,6 @@ with col_geo:
         height=460, yaxis=dict(autorange="reversed"),
     )
     st.plotly_chart(fig9, use_container_width=True)
+
+st.divider()
+st.caption("🌐 [https://olist-ecom-re.streamlit.app/](https://olist-ecom-re.streamlit.app/)  ·  📂 [GitHub](https://github.com/Sayan7anDa5/Olist-ECOM)  ·  Data: Olist Brazilian E-Commerce 2016–2018")
