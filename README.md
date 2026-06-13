@@ -1,6 +1,8 @@
 # Customer Value Segmentation & Revenue-at-Risk Analysis
 
-An end-to-end SQL analytics project on the [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (~100K orders, 2016–2018). Demonstrates window functions, CTEs, RFM segmentation, cohort retention analysis, and revenue concentration — feeding a Power BI dashboard.
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://olist-ecom-re.streamlit.app/)
+
+An end-to-end SQL analytics project on the [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (~100K orders, 2016–2018). Demonstrates window functions, CTEs, RFM segmentation, cohort retention analysis, and revenue concentration — feeding an interactive dashboard.
 
 ---
 
